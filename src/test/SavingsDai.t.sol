@@ -3,6 +3,7 @@
 pragma solidity ^0.8.17;
 
 import "dss-test/DSSTest.sol";
+import "dss-interfaces/Interfaces.sol";
 
 import { SavingsDai, IERC1271 } from "../SavingsDai.sol";
 
@@ -39,6 +40,13 @@ contract MockMultisig is IERC1271 {
 
 contract SavingsDaiTest is DSSTest {
 
+    using GodMode for *;
+
+    VatAbstract vat;
+    DaiJoinAbstract daiJoin;
+    DaiAbstract dai;
+    PotAbstract pot;
+
     SavingsDai token;
 
     event Transfer(address indexed from, address indexed to, uint256 amount);
@@ -48,29 +56,45 @@ contract SavingsDaiTest is DSSTest {
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
     function postSetup() internal virtual override {
-        vm.expectEmit(true, true, true, true);
-        emit Rely(address(this));
-        token = new SavingsDai();
+        ChainlogAbstract chainlog = ChainlogAbstract(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
+        
+        vat = VatAbstract(chainlog.getAddress("MCD_VAT"));
+        dai = DaiAbstract(chainlog.getAddress("MCD_DAI"));
+        daiJoin = DaiJoinAbstract(chainlog.getAddress("MCD_JOIN_DAI"));
+        pot = PotAbstract(chainlog.getAddress("MCD_POT"));
+
+        token = new SavingsDai(
+            address(daiJoin),
+            address(pot)
+        );
+        
+        dai.setBalance(address(this), 100 ether);
+        dai.approve(address(token), type(uint256).max);
+        pot.drip();
     }
 
-    function testAuth() public {
-        checkAuth(address(token), "SavingsDai");
-    }
-
-    function invariantMetadata() public {
-        assertEq(token.name(), "SavingsDai Stablecoin");
-        assertEq(token.symbol(), "SavingsDai");
-        assertEq(token.version(), "3");
+    function testConstructor() public {
+        assertEq(token.name(), "Savings Dai");
+        assertEq(token.symbol(), "sDAI");
+        assertEq(token.version(), "1");
         assertEq(token.decimals(), 18);
+        assertEq(address(token.vat()), address(vat));
+        assertEq(address(token.daiJoin()), address(daiJoin));
+        assertEq(address(token.dai()), address(dai));
+        assertEq(address(token.pot()), address(pot));
     }
 
     function testMint() public {
+        uint256 dsrDai = vat.dai(address(pot));
+
+        uint256 pie = 1e18 * RAY / pot.chi();
         vm.expectEmit(true, true, true, true);
-        emit Transfer(address(0), address(0xBEEF), 1e18);
+        emit Transfer(address(0), address(0xBEEF), pie);
         token.mint(address(0xBEEF), 1e18);
 
-        assertEq(token.totalSupply(), 1e18);
-        assertEq(token.balanceOf(address(0xBEEF)), 1e18);
+        assertEq(token.totalSupply(), pie);
+        assertEq(token.balanceOf(address(0xBEEF)), pie);
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
     }
 
     function testMintBadAddress() public {
@@ -81,15 +105,21 @@ contract SavingsDaiTest is DSSTest {
     }
 
     function testBurn() public {
+        uint256 dsrDai = vat.dai(address(pot));
+
         token.mint(address(0xBEEF), 1e18);
+        uint256 pie = 1e18 * RAY / pot.chi();
+
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
 
         vm.expectEmit(true, true, true, true);
-        emit Transfer(address(0xBEEF), address(0), 0.9e18);
+        emit Transfer(address(0xBEEF), address(0), pie * 0.9e18 / WAD);
         vm.prank(address(0xBEEF));
-        token.burn(address(0xBEEF), 0.9e18);
+        token.burn(address(0xBEEF), pie * 0.9e18 / WAD);
 
-        assertEq(token.totalSupply(), 1e18 - 0.9e18);
-        assertEq(token.balanceOf(address(0xBEEF)), 0.1e18);
+        assertEq(token.totalSupply(), pie - pie * 0.9e18 / WAD);
+        assertEq(token.balanceOf(address(0xBEEF)), pie - pie * 0.9e18 / WAD);
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi() - (pie * 0.9e18 / WAD) * pot.chi());
     }
 
     function testApprove() public {
@@ -124,57 +154,62 @@ contract SavingsDaiTest is DSSTest {
     }
 
     function testTransfer() public {
+        uint256 pie = 1e18 * RAY / pot.chi();
         token.mint(address(this), 1e18);
 
         vm.expectEmit(true, true, true, true);
-        emit Transfer(address(this), address(0xBEEF), 1e18);
-        assertTrue(token.transfer(address(0xBEEF), 1e18));
-        assertEq(token.totalSupply(), 1e18);
+        emit Transfer(address(this), address(0xBEEF), pie);
+        assertTrue(token.transfer(address(0xBEEF), pie));
+        assertEq(token.totalSupply(), pie);
 
         assertEq(token.balanceOf(address(this)), 0);
-        assertEq(token.balanceOf(address(0xBEEF)), 1e18);
+        assertEq(token.balanceOf(address(0xBEEF)), pie);
     }
 
     function testTransferBadAddress() public {
+        uint256 pie = 1e18 * RAY / pot.chi();
         token.mint(address(this), 1e18);
 
         vm.expectRevert("SavingsDai/invalid-address");
-        token.transfer(address(0), 1e18);
+        token.transfer(address(0), pie);
         vm.expectRevert("SavingsDai/invalid-address");
-        token.transfer(address(token), 1e18);
+        token.transfer(address(token), pie);
     }
 
     function testTransferFrom() public {
         address from = address(0xABCD);
 
+        uint256 pie = 1e18 * RAY / pot.chi();
         token.mint(from, 1e18);
 
         vm.prank(from);
-        token.approve(address(this), 1e18);
+        token.approve(address(this), pie);
 
         vm.expectEmit(true, true, true, true);
-        emit Transfer(from, address(0xBEEF), 1e18);
-        assertTrue(token.transferFrom(from, address(0xBEEF), 1e18));
-        assertEq(token.totalSupply(), 1e18);
+        emit Transfer(from, address(0xBEEF), pie);
+        assertTrue(token.transferFrom(from, address(0xBEEF), pie));
+        assertEq(token.totalSupply(), pie);
 
         assertEq(token.allowance(from, address(this)), 0);
 
         assertEq(token.balanceOf(from), 0);
-        assertEq(token.balanceOf(address(0xBEEF)), 1e18);
+        assertEq(token.balanceOf(address(0xBEEF)), pie);
     }
 
     function testTransferFromBadAddress() public {
+        uint256 pie = 1e18 * RAY / pot.chi();
         token.mint(address(this), 1e18);
         
         vm.expectRevert("SavingsDai/invalid-address");
-        token.transferFrom(address(this), address(0), 1e18);
+        token.transferFrom(address(this), address(0), pie);
         vm.expectRevert("SavingsDai/invalid-address");
-        token.transferFrom(address(this), address(token), 1e18);
+        token.transferFrom(address(this), address(token), pie);
     }
 
     function testInfiniteApproveTransferFrom() public {
         address from = address(0xABCD);
 
+        uint256 pie = 1e18 * RAY / pot.chi();
         token.mint(from, 1e18);
 
         vm.prank(from);
@@ -183,14 +218,14 @@ contract SavingsDaiTest is DSSTest {
         token.approve(address(this), type(uint256).max);
 
         vm.expectEmit(true, true, true, true);
-        emit Transfer(from, address(0xBEEF), 1e18);
-        assertTrue(token.transferFrom(from, address(0xBEEF), 1e18));
-        assertEq(token.totalSupply(), 1e18);
+        emit Transfer(from, address(0xBEEF), pie);
+        assertTrue(token.transferFrom(from, address(0xBEEF), pie));
+        assertEq(token.totalSupply(), pie);
 
         assertEq(token.allowance(from, address(this)), type(uint256).max);
 
         assertEq(token.balanceOf(from), 0);
-        assertEq(token.balanceOf(address(0xBEEF)), 1e18);
+        assertEq(token.balanceOf(address(0xBEEF)), pie);
     }
 
     function testPermit() public {
@@ -291,33 +326,36 @@ contract SavingsDaiTest is DSSTest {
     }
 
     function testTransferInsufficientBalance() public {
+        uint256 pie = 0.9e18 * RAY / pot.chi();
         token.mint(address(this), 0.9e18);
         vm.expectRevert("SavingsDai/insufficient-balance");
-        token.transfer(address(0xBEEF), 1e18);
+        token.transfer(address(0xBEEF), pie + 1);
     }
 
     function testTransferFromInsufficientAllowance() public {
         address from = address(0xABCD);
 
+        uint256 pie = 1e18 * RAY / pot.chi();
         token.mint(from, 1e18);
 
         vm.prank(from);
-        token.approve(address(this), 0.9e18);
+        token.approve(address(this), pie - 1);
 
         vm.expectRevert("SavingsDai/insufficient-allowance");
-        token.transferFrom(from, address(0xBEEF), 1e18);
+        token.transferFrom(from, address(0xBEEF), pie);
     }
 
     function testTransferFromInsufficientBalance() public {
         address from = address(0xABCD);
 
+        uint256 pie = 0.9e18 * RAY / pot.chi();
         token.mint(from, 0.9e18);
 
         vm.prank(from);
-        token.approve(address(this), 1e18);
+        token.approve(address(this), pie + 1);
 
         vm.expectRevert("SavingsDai/insufficient-balance");
-        token.transferFrom(from, address(0xBEEF), 1e18);
+        token.transferFrom(from, address(0xBEEF), pie + 1);
     }
 
     function testPermitBadNonce() public {
@@ -402,17 +440,19 @@ contract SavingsDaiTest is DSSTest {
     }
 
     function testMint(address to, uint256 amount) public {
+        amount %= 100 ether;
+        uint256 pie = amount * RAY / pot.chi();
         if (to != address(0) && to != address(token)) {
             vm.expectEmit(true, true, true, true);
-            emit Transfer(address(0), to, amount);
+            emit Transfer(address(0), to, pie);
         } else {
             vm.expectRevert("SavingsDai/invalid-address");
         }
         token.mint(to, amount);
 
         if (to != address(0) && to != address(token)) {
-            assertEq(token.totalSupply(), amount);
-            assertEq(token.balanceOf(to), amount);
+            assertEq(token.totalSupply(), pie);
+            assertEq(token.balanceOf(to), pie);
         }
     }
 
@@ -421,9 +461,12 @@ contract SavingsDaiTest is DSSTest {
         uint256 mintAmount,
         uint256 burnAmount
     ) public {
+        mintAmount %= 100 ether;
+        burnAmount %= 100 ether;
         if (from == address(0) || from == address(token)) return;
 
-        burnAmount = bound(burnAmount, 0, mintAmount);
+        uint256 pie = mintAmount * RAY / pot.chi();
+        burnAmount = bound(burnAmount, 0, pie);
 
         token.mint(from, mintAmount);
 
@@ -432,8 +475,8 @@ contract SavingsDaiTest is DSSTest {
         vm.prank(from);
         token.burn(from, burnAmount);
 
-        assertEq(token.totalSupply(), mintAmount - burnAmount);
-        assertEq(token.balanceOf(from), mintAmount - burnAmount);
+        assertEq(token.totalSupply(), pie - burnAmount);
+        assertEq(token.balanceOf(from), pie - burnAmount);
     }
 
     function testApprove(address to, uint256 amount) public {
@@ -445,20 +488,22 @@ contract SavingsDaiTest is DSSTest {
     }
 
     function testTransfer(address to, uint256 amount) public {
+        amount %= 100 ether;
         if (to == address(0) || to == address(token)) return;
 
+        uint256 pie = amount * RAY / pot.chi();
         token.mint(address(this), amount);
 
         vm.expectEmit(true, true, true, true);
-        emit Transfer(address(this), to, amount);
-        assertTrue(token.transfer(to, amount));
-        assertEq(token.totalSupply(), amount);
+        emit Transfer(address(this), to, pie);
+        assertTrue(token.transfer(to, pie));
+        assertEq(token.totalSupply(), pie);
 
         if (address(this) == to) {
-            assertEq(token.balanceOf(address(this)), amount);
+            assertEq(token.balanceOf(address(this)), pie);
         } else {
             assertEq(token.balanceOf(address(this)), 0);
-            assertEq(token.balanceOf(to), amount);
+            assertEq(token.balanceOf(to), pie);
         }
     }
 
@@ -467,30 +512,34 @@ contract SavingsDaiTest is DSSTest {
         uint256 approval,
         uint256 amount
     ) public {
+        approval %= 100 ether;
+        amount %= 100 ether;
         if (to == address(0) || to == address(token)) return;
 
         amount = bound(amount, 0, approval);
+        approval = approval * RAY / pot.chi();
 
         address from = address(0xABCD);
 
+        uint256 pie = amount * RAY / pot.chi();
         token.mint(from, amount);
 
         vm.prank(from);
         token.approve(address(this), approval);
 
         vm.expectEmit(true, true, true, true);
-        emit Transfer(from, to, amount);
-        assertTrue(token.transferFrom(from, to, amount));
-        assertEq(token.totalSupply(), amount);
+        emit Transfer(from, to, pie);
+        assertTrue(token.transferFrom(from, to, pie));
+        assertEq(token.totalSupply(), pie);
 
-        uint256 app = from == address(this) || approval == type(uint256).max ? approval : approval - amount;
+        uint256 app = from == address(this) || approval == type(uint256).max ? approval : approval - pie;
         assertEq(token.allowance(from, address(this)), app);
 
         if (from == to) {
-            assertEq(token.balanceOf(from), amount);
+            assertEq(token.balanceOf(from), pie);
         } else  {
             assertEq(token.balanceOf(from), 0);
-            assertEq(token.balanceOf(to), amount);
+            assertEq(token.balanceOf(to), pie);
         }
     }
 
@@ -530,10 +579,12 @@ contract SavingsDaiTest is DSSTest {
         uint256 mintAmount,
         uint256 burnAmount
     ) public {
+        mintAmount %= 100 ether;
+        burnAmount %= 100 ether;
         if (to == address(0) || to == address(token)) return;
 
-        if (mintAmount == type(uint256).max) mintAmount -= 1;
-        burnAmount = bound(burnAmount, mintAmount + 1, type(uint256).max);
+        uint256 pie = mintAmount * RAY / pot.chi();
+        burnAmount = bound(burnAmount, pie + 1, type(uint256).max);
 
         token.mint(to, mintAmount);
         vm.expectRevert("SavingsDai/insufficient-balance");
@@ -545,10 +596,12 @@ contract SavingsDaiTest is DSSTest {
         uint256 mintAmount,
         uint256 sendAmount
     ) public {
+        mintAmount %= 100 ether;
+        sendAmount %= 100 ether;
         if (to == address(0) || to == address(token)) return;
 
-        if (mintAmount == type(uint256).max) mintAmount -= 1;
-        sendAmount = bound(sendAmount, mintAmount + 1, type(uint256).max);
+        uint256 pie = mintAmount * RAY / pot.chi();
+        sendAmount = bound(sendAmount, pie + 1, 100 ether);
 
         token.mint(address(this), mintAmount);
         vm.expectRevert("SavingsDai/insufficient-balance");
@@ -560,20 +613,23 @@ contract SavingsDaiTest is DSSTest {
         uint256 approval,
         uint256 amount
     ) public {
+        approval %= 100 ether;
+        amount %= 100 ether;
         if (to == address(0) || to == address(token)) return;
 
-        if (approval == type(uint256).max) approval -= 1;
-        amount = bound(amount, approval + 1, type(uint256).max);
+        amount = bound(amount, approval + 1, 100 ether);
+        approval = approval * RAY / pot.chi();
 
         address from = address(0xABCD);
 
+        uint256 pie = amount * RAY / pot.chi();
         token.mint(from, amount);
 
         vm.prank(from);
         token.approve(address(this), approval);
 
         vm.expectRevert("SavingsDai/insufficient-allowance");
-        token.transferFrom(from, to, amount);
+        token.transferFrom(from, to, pie);
     }
 
     function testTransferFromInsufficientBalance(
@@ -581,10 +637,12 @@ contract SavingsDaiTest is DSSTest {
         uint256 mintAmount,
         uint256 sendAmount
     ) public {
+        mintAmount %= 100 ether;
+        sendAmount %= 100 ether;
         if (to == address(0) || to == address(token)) return;
 
-        if (mintAmount == type(uint256).max) mintAmount -= 1;
-        sendAmount = bound(sendAmount, mintAmount + 1, type(uint256).max);
+        uint256 pie = mintAmount * RAY / pot.chi();
+        sendAmount = bound(sendAmount, pie + 1, 100 ether);
 
         address from = address(0xABCD);
 

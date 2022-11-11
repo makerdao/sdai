@@ -112,7 +112,7 @@ contract SavingsDai {
     }
 
     // --- ERC20 Mutations ---
-    
+
     function transfer(address to, uint256 value) external returns (bool) {
         require(to != address(0) && to != address(this), "SavingsDai/invalid-address");
         uint256 balance = balanceOf[msg.sender];
@@ -190,16 +190,17 @@ contract SavingsDai {
         require(to != address(0) && to != address(this), "SavingsDai/invalid-address");
 
         uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
+        uint256 pie = value * RAY / chi;
         dai.transferFrom(msg.sender, address(this), value);
         daiJoin.join(address(this), value);
-        pot.join(value * RAY / chi);
+        pot.join(pie);
 
         unchecked {
-            balanceOf[to] = balanceOf[to] + value; // note: we don't need an overflow check here b/c balanceOf[to] <= totalSupply and there is an overflow check below
+            balanceOf[to] = balanceOf[to] + pie; // note: we don't need an overflow check here b/c balanceOf[to] <= totalSupply and there is an overflow check below
         }
-        totalSupply = totalSupply + value;
+        totalSupply = totalSupply + pie;
 
-        emit Transfer(address(0), to, value);
+        emit Transfer(address(0), to, pie);
     }
 
     function burn(address from, uint256 value) external {
@@ -265,8 +266,8 @@ contract SavingsDai {
         uint256 deadline,
         bytes memory signature
     ) public {
-        require(block.timestamp <= deadline, "Dai/permit-expired");
-        require(owner != address(0), "Dai/invalid-owner");
+        require(block.timestamp <= deadline, "SavingsDai/permit-expired");
+        require(owner != address(0), "SavingsDai/invalid-owner");
 
         uint256 nonce;
         unchecked { nonce = nonces[owner]++; }
@@ -285,7 +286,7 @@ contract SavingsDai {
                 ))
             ));
 
-        require(_isValidSignature(owner, digest, signature), "Dai/invalid-permit");
+        require(_isValidSignature(owner, digest, signature), "SavingsDai/invalid-permit");
 
         allowance[owner][spender] = value;
         emit Approval(owner, spender, value);
