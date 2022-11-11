@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/// Dai.sol -- Dai token
+/// SavingsDai.sol -- A tokenized representation DAI in the DSR (pot)
 
 // Copyright (C) 2017, 2018, 2019 dbrock, rain, mrchico
 // Copyright (C) 2021-2022 Dai Foundation
@@ -18,7 +18,14 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.17;
+
+interface IERC1271 {
+    function isValidSignature(
+        bytes32,
+        bytes memory
+    ) external view returns (bytes4);
+}
 
 interface VatLike {
     function hope(address) external;
@@ -45,12 +52,13 @@ interface DaiLike {
 }
 
 contract SavingsDai {
+
     // --- ERC20 Data ---
-    string      public constant name     = "Savings Dai";
-    string      public constant symbol   = "sDAI";
-    string      public constant version  = "1";
-    uint8       public constant decimals = 18;
-    uint256     public totalSupply;
+    string  public constant name     = "Savings Dai";
+    string  public constant symbol   = "sDAI";
+    string  public constant version  = "1";
+    uint8   public constant decimals = 18;
+    uint256 public totalSupply;
 
     mapping (address => uint256)                      public balanceOf;
     mapping (address => mapping (address => uint256)) public allowance;
@@ -104,6 +112,7 @@ contract SavingsDai {
     }
 
     // --- ERC20 Mutations ---
+    
     function transfer(address to, uint256 value) external returns (bool) {
         require(to != address(0) && to != address(this), "SavingsDai/invalid-address");
         uint256 balance = balanceOf[msg.sender];
@@ -176,6 +185,7 @@ contract SavingsDai {
     }
 
     // --- Mint/Burn ---
+
     function mint(address to, uint256 value) external {
         require(to != address(0) && to != address(this), "SavingsDai/invalid-address");
 
@@ -220,8 +230,43 @@ contract SavingsDai {
     }
 
     // --- Approve by signature ---
-    function permit(address owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external {
-        require(block.timestamp <= deadline, "SavingsDai/permit-expired");
+
+    function _isValidSignature(
+        address signer,
+        bytes32 digest,
+        bytes memory signature
+    ) internal view returns (bool) {
+        if (signature.length == 65) {
+            bytes32 r;
+            bytes32 s;
+            uint8 v;
+            assembly {
+                r := mload(add(signature, 0x20))
+                s := mload(add(signature, 0x40))
+                v := byte(0, mload(add(signature, 0x60)))
+            }
+            if (signer == ecrecover(digest, v, r, s)) {
+                return true;
+            }
+        }
+
+        (bool success, bytes memory result) = signer.staticcall(
+            abi.encodeWithSelector(IERC1271.isValidSignature.selector, digest, signature)
+        );
+        return (success &&
+            result.length == 32 &&
+            abi.decode(result, (bytes4)) == IERC1271.isValidSignature.selector);
+    }
+
+    function permit(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        bytes memory signature
+    ) public {
+        require(block.timestamp <= deadline, "Dai/permit-expired");
+        require(owner != address(0), "Dai/invalid-owner");
 
         uint256 nonce;
         unchecked { nonce = nonces[owner]++; }
@@ -240,9 +285,22 @@ contract SavingsDai {
                 ))
             ));
 
-        require(owner != address(0) && owner == ecrecover(digest, v, r, s), "SavingsDai/invalid-permit");
+        require(_isValidSignature(owner, digest, signature), "Dai/invalid-permit");
 
         allowance[owner][spender] = value;
         emit Approval(owner, spender, value);
     }
+
+    function permit(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        permit(owner, spender, value, deadline, abi.encodePacked(r, s, v));
+    }
+
 }
