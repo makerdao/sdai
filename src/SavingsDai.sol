@@ -220,6 +220,8 @@ contract SavingsDai {
     // --- Mint/Burn Internal ---
 
     function _mint(uint256 assets, uint256 shares, address receiver) internal {
+        require(receiver != address(0) && receiver != address(this), "SavingsDai/invalid-address");
+
         dai.transferFrom(msg.sender, address(this), assets);
         daiJoin.join(address(this), assets);
         pot.join(shares);
@@ -289,8 +291,6 @@ contract SavingsDai {
     }
 
     function deposit(uint256 assets, address receiver) public returns (uint256 shares) {
-        require(receiver != address(0) && receiver != address(this), "SavingsDai/invalid-address");
-
         uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
         shares = assets * RAY / chi;
         _mint(assets, shares, receiver);

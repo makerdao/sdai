@@ -75,6 +75,12 @@ contract SavingsDaiTest is DSSTest {
         pot.drip();
     }
 
+    function _divup(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        unchecked {
+            z = x != 0 ? ((x - 1) / y) + 1 : 0;
+        }
+    }
+
     function testConstructor() public {
         assertEq(token.name(), "Savings Dai");
         assertEq(token.symbol(), "sDAI");
@@ -106,6 +112,26 @@ contract SavingsDaiTest is DSSTest {
         token.deposit(1e18, address(token));
     }
 
+    function testMint() public {
+        uint256 dsrDai = vat.dai(address(pot));
+
+        uint256 pie = 1e18 * RAY / pot.chi();
+        vm.expectEmit(true, true, true, true);
+        emit Deposit(address(this), address(0xBEEF), _divup(pie * pot.chi(), RAY), pie);
+        token.mint(pie, address(0xBEEF));
+
+        assertEq(token.totalSupply(), pie);
+        assertEq(token.balanceOf(address(0xBEEF)), pie);
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
+    }
+
+    function testMintBadAddress() public {
+        vm.expectRevert("SavingsDai/invalid-address");
+        token.mint(1e18, address(0));
+        vm.expectRevert("SavingsDai/invalid-address");
+        token.mint(1e18, address(token));
+    }
+
     function testRedeem() public {
         uint256 dsrDai = vat.dai(address(pot));
 
@@ -122,6 +148,26 @@ contract SavingsDaiTest is DSSTest {
         assertEq(token.totalSupply(), pie - pie * 0.9e18 / WAD);
         assertEq(token.balanceOf(address(0xBEEF)), pie - pie * 0.9e18 / WAD);
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi() - (pie * 0.9e18 / WAD) * pot.chi());
+    }
+
+    function testWithdraw() public {
+        uint256 dsrDai = vat.dai(address(pot));
+
+        token.deposit(1e18, address(0xBEEF));
+        uint256 pie = 1e18 * RAY / pot.chi();
+
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
+
+        uint256 assets = (pie * 0.9e18 / WAD) * pot.chi() / RAY;
+        uint256 shares = _divup(assets * RAY, pot.chi());
+        vm.expectEmit(true, true, true, true);
+        emit Withdraw(address(0xBEEF), address(this), address(0xBEEF), assets, shares);
+        vm.prank(address(0xBEEF));
+        token.withdraw(assets, address(this), address(0xBEEF));
+
+        assertEq(token.totalSupply(), pie - shares);
+        assertEq(token.balanceOf(address(0xBEEF)), pie - shares);
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi() - shares * pot.chi());
     }
 
     function testApprove() public {
