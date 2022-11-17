@@ -34,6 +34,7 @@ interface VatLike {
 interface PotLike {
     function chi() external view returns (uint256);
     function rho() external view returns (uint256);
+    function dsr() external view returns (uint256);
     function drip() external returns (uint256);
     function join(uint256) external;
     function exit(uint256) external;
@@ -73,6 +74,8 @@ contract SavingsDai {
     // --- Events ---
     event Approval(address indexed owner, address indexed spender, uint256 value);
     event Transfer(address indexed from, address indexed to, uint256 value);
+    event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
+    event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
 
     // --- EIP712 niceties ---
     uint256 public immutable deploymentChainId;
@@ -109,6 +112,36 @@ contract SavingsDai {
 
     function DOMAIN_SEPARATOR() external view returns (bytes32) {
         return block.chainid == deploymentChainId ? _DOMAIN_SEPARATOR : _calculateDomainSeparator(block.chainid);
+    }
+
+    function _rpow(uint x, uint n, uint base) internal pure returns (uint z) {
+        assembly {
+            switch x case 0 {switch n case 0 {z := base} default {z := 0}}
+            default {
+                switch mod(n, 2) case 0 { z := base } default { z := x }
+                let half := div(base, 2)  // for rounding.
+                for { n := div(n, 2) } n { n := div(n,2) } {
+                    let xx := mul(x, x)
+                    if iszero(eq(div(xx, x), x)) { revert(0,0) }
+                    let xxRound := add(xx, half)
+                    if lt(xxRound, xx) { revert(0,0) }
+                    x := div(xxRound, base)
+                    if mod(n,2) {
+                        let zx := mul(z, x)
+                        if and(iszero(iszero(x)), iszero(eq(div(zx, x), z))) { revert(0,0) }
+                        let zxRound := add(zx, half)
+                        if lt(zxRound, zx) { revert(0,0) }
+                        z := div(zxRound, base)
+                    }
+                }
+            }
+        }
+    }
+
+    function _divup(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        unchecked {
+            z = x != 0 ? ((x - 1) / y) + 1 : 0;
+        }
     }
 
     // --- ERC20 Mutations ---
@@ -184,50 +217,125 @@ contract SavingsDai {
         return true;
     }
 
-    // --- Mint/Burn ---
+    // --- Mint/Burn Internal ---
 
-    function mint(address to, uint256 value) external {
-        require(to != address(0) && to != address(this), "SavingsDai/invalid-address");
-
-        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
-        uint256 pie = value * RAY / chi;
-        dai.transferFrom(msg.sender, address(this), value);
-        daiJoin.join(address(this), value);
-        pot.join(pie);
+    function _mint(uint256 assets, uint256 shares, address receiver) internal {
+        dai.transferFrom(msg.sender, address(this), assets);
+        daiJoin.join(address(this), assets);
+        pot.join(shares);
 
         unchecked {
-            balanceOf[to] = balanceOf[to] + pie; // note: we don't need an overflow check here b/c balanceOf[to] <= totalSupply and there is an overflow check below
+            balanceOf[receiver] = balanceOf[receiver] + shares; // note: we don't need an overflow check here b/c balanceOf[to] <= totalSupply and there is an overflow check below
         }
-        totalSupply = totalSupply + pie;
+        totalSupply = totalSupply + shares;
 
-        emit Transfer(address(0), to, pie);
+        emit Deposit(msg.sender, receiver, assets, shares);
     }
 
-    function burn(address from, uint256 value) external {
-        uint256 balance = balanceOf[from];
-        require(balance >= value, "SavingsDai/insufficient-balance");
+    function _burn(uint256 assets, uint256 shares, address receiver, address owner) internal {
+        uint256 balance = balanceOf[owner];
+        require(balance >= shares, "SavingsDai/insufficient-balance");
 
-        if (from != msg.sender) {
-            uint256 allowed = allowance[from][msg.sender];
+        if (owner != msg.sender) {
+            uint256 allowed = allowance[owner][msg.sender];
             if (allowed != type(uint256).max) {
-                require(allowed >= value, "SavingsDai/insufficient-allowance");
+                require(allowed >= shares, "SavingsDai/insufficient-allowance");
 
                 unchecked {
-                    allowance[from][msg.sender] = allowed - value;
+                    allowance[owner][msg.sender] = allowed - shares;
                 }
             }
         }
 
         unchecked {
-            balanceOf[from] = balance - value; // note: we don't need overflow checks b/c require(balance >= value) and balance <= totalSupply
-            totalSupply     = totalSupply - value;
+            balanceOf[owner] = balance - shares; // note: we don't need overflow checks b/c require(balance >= value) and balance <= totalSupply
+            totalSupply      = totalSupply - shares;
         }
 
-        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
-        pot.exit(value);
-        daiJoin.exit(msg.sender, chi * value / RAY);
+        pot.exit(shares);
+        daiJoin.exit(receiver, assets);
 
-        emit Transfer(from, address(0), value);
+        emit Withdraw(msg.sender, receiver, owner, assets, shares);
+    }
+
+    // --- ERC-4626 ---
+
+    function asset() external view returns (address) {
+        return address(dai);
+    }
+
+    function totalAssets() external view returns (uint256) {
+        return convertToAssets(totalSupply);
+    }
+
+    function convertToShares(uint256 assets) public view returns (uint256) {
+        uint256 rho = pot.rho();
+        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho, RAY) * pot.chi() / RAY : pot.chi();
+        return assets * RAY / chi;
+    }
+
+    function convertToAssets(uint256 shares) public view returns (uint256) {
+        uint256 rho = pot.rho();
+        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho, RAY) * pot.chi() / RAY : pot.chi();
+        return shares * chi / RAY;
+    }
+
+    function maxDeposit(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function previewDeposit(uint256 assets) external view returns (uint256) {
+        return convertToShares(assets);
+    }
+
+    function deposit(uint256 assets, address receiver) public returns (uint256 shares) {
+        require(receiver != address(0) && receiver != address(this), "SavingsDai/invalid-address");
+
+        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
+        shares = assets * RAY / chi;
+        _mint(assets, shares, receiver);
+    }
+
+    function maxMint(address) external pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function previewMint(uint256 shares) external view returns (uint256) {
+        return convertToAssets(shares);
+    }
+
+    function mint(uint256 shares, address receiver) external returns (uint256 assets) {
+        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
+        assets = _divup(shares * chi, RAY);
+        _mint(assets, shares, receiver);
+    }
+
+    function maxWithdraw(address owner) external view returns (uint256) {
+        return convertToAssets(balanceOf[owner]);
+    }
+
+    function previewWithdraw(uint256 assets) external view returns (uint256) {
+        return convertToShares(assets);
+    }
+
+    function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
+        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
+        shares = _divup(assets * RAY, chi);
+        _burn(assets, shares, receiver, owner);
+    }
+
+    function maxRedeem(address owner) external view returns (uint256) {
+        return balanceOf[owner];
+    }
+
+    function previewRedeem(uint256 shares) external view returns (uint256) {
+        return convertToAssets(shares);
+    }
+
+    function redeem(uint256 shares, address receiver, address owner) public returns (uint256 assets) {
+        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
+        assets = chi * shares / RAY;
+        _burn(assets, shares, receiver, owner);
     }
 
     // --- Approve by signature ---
