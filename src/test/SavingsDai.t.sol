@@ -120,7 +120,8 @@ contract SavingsDaiTest is DSSTest {
         token.deposit(1e18, address(0xBEEF));
 
         assertEq(token.totalSupply(), pie);
-        assertEq(token.totalAssets(), 1e18);
+        assertLe(token.totalAssets(), 1e18);    // May be slightly less due to rounding error
+        assertGe(token.totalAssets(), 1e18 - 1);
         assertEq(token.balanceOf(address(0xBEEF)), pie);
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
     }
@@ -509,18 +510,20 @@ contract SavingsDaiTest is DSSTest {
         token.permit(owner, address(0xCAFE), 1e18, block.timestamp, v, r, s);
     }
 
-    function testDeposit(address to, uint256 amount) public {
+    function testDeposit(address to, uint256 amount, uint256 warp) public {
         amount %= 100 ether;
-        uint256 pie = amount * RAY / pot.chi();
+        vm.warp(block.timestamp + warp % 365 days);
+        uint256 pie = token.previewDeposit(amount);
         if (to != address(0) && to != address(token)) {
             vm.expectEmit(true, true, true, true);
             emit Deposit(address(this), to, amount, pie);
         } else {
             vm.expectRevert("SavingsDai/invalid-address");
         }
-        token.deposit(amount, to);
+        uint256 shares = token.deposit(amount, to);
 
         if (to != address(0) && to != address(token)) {
+            assertEq(shares, pie);
             assertEq(token.totalSupply(), pie);
             assertEq(token.balanceOf(to), pie);
         }

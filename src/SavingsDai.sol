@@ -301,7 +301,9 @@ contract SavingsDai {
     }
 
     function previewMint(uint256 shares) external view returns (uint256) {
-        return convertToAssets(shares);
+        uint256 rho = pot.rho();
+        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho, RAY) * pot.chi() / RAY : pot.chi();
+        return _divup(shares * chi, RAY);
     }
 
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
@@ -315,7 +317,9 @@ contract SavingsDai {
     }
 
     function previewWithdraw(uint256 assets) external view returns (uint256) {
-        return convertToShares(assets);
+        uint256 rho = pot.rho();
+        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho, RAY) * pot.chi() / RAY : pot.chi();
+        return _divup(assets * RAY, chi);
     }
 
     function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
