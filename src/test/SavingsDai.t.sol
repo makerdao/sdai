@@ -90,6 +90,25 @@ contract SavingsDaiTest is DSSTest {
         assertEq(address(token.daiJoin()), address(daiJoin));
         assertEq(address(token.dai()), address(dai));
         assertEq(address(token.pot()), address(pot));
+        assertEq(address(token.asset()), address(dai));
+    }
+
+    function testConversion() public {
+        assertGt(pot.dsr(), 0);
+
+        uint256 pshares = token.convertToShares(1e18);
+        uint256 passets = token.convertToAssets(pshares);
+
+        // Converting back and forth should always round against
+        assertLe(passets, 1e18);
+
+        // Accrue some interest
+        vm.warp(block.timestamp + 1 days);
+
+        uint256 shares = token.convertToShares(1e18);
+
+        // Shares should be less because more interest has accrued
+        assertLt(shares, pshares);
     }
 
     function testDeposit() public {
@@ -101,6 +120,7 @@ contract SavingsDaiTest is DSSTest {
         token.deposit(1e18, address(0xBEEF));
 
         assertEq(token.totalSupply(), pie);
+        assertEq(token.totalAssets(), 1e18);
         assertEq(token.balanceOf(address(0xBEEF)), pie);
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
     }
@@ -121,6 +141,8 @@ contract SavingsDaiTest is DSSTest {
         token.mint(pie, address(0xBEEF));
 
         assertEq(token.totalSupply(), pie);
+        assertLe(token.totalAssets(), 1e18);    // May be slightly less due to rounding error
+        assertGe(token.totalAssets(), 1e18 - 1);
         assertEq(token.balanceOf(address(0xBEEF)), pie);
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
     }

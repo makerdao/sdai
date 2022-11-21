@@ -334,7 +334,7 @@ contract SavingsDai {
 
     function redeem(uint256 shares, address receiver, address owner) public returns (uint256 assets) {
         uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
-        assets = chi * shares / RAY;
+        assets = shares * chi / RAY;
         _burn(assets, shares, receiver, owner);
     }
 
