@@ -51,6 +51,8 @@ contract SavingsDaiTest is DSSTest {
 
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
+    event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
+    event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
 
     bytes32 constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
@@ -73,6 +75,12 @@ contract SavingsDaiTest is DSSTest {
         pot.drip();
     }
 
+    function _divup(uint256 x, uint256 y) internal pure returns (uint256 z) {
+        unchecked {
+            z = x != 0 ? ((x - 1) / y) + 1 : 0;
+        }
+    }
+
     function testConstructor() public {
         assertEq(token.name(), "Savings Dai");
         assertEq(token.symbol(), "sDAI");
@@ -82,6 +90,46 @@ contract SavingsDaiTest is DSSTest {
         assertEq(address(token.daiJoin()), address(daiJoin));
         assertEq(address(token.dai()), address(dai));
         assertEq(address(token.pot()), address(pot));
+        assertEq(address(token.asset()), address(dai));
+    }
+
+    function testConversion() public {
+        assertGt(pot.dsr(), 0);
+
+        uint256 pshares = token.convertToShares(1e18);
+        uint256 passets = token.convertToAssets(pshares);
+
+        // Converting back and forth should always round against
+        assertLe(passets, 1e18);
+
+        // Accrue some interest
+        vm.warp(block.timestamp + 1 days);
+
+        uint256 shares = token.convertToShares(1e18);
+
+        // Shares should be less because more interest has accrued
+        assertLt(shares, pshares);
+    }
+
+    function testDeposit() public {
+        uint256 dsrDai = vat.dai(address(pot));
+
+        uint256 pie = 1e18 * RAY / pot.chi();
+        vm.expectEmit(true, true, true, true);
+        emit Deposit(address(this), address(0xBEEF), 1e18, pie);
+        token.deposit(1e18, address(0xBEEF));
+
+        assertEq(token.totalSupply(), pie);
+        assertEq(token.totalAssets(), 1e18);
+        assertEq(token.balanceOf(address(0xBEEF)), pie);
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
+    }
+
+    function testDepositBadAddress() public {
+        vm.expectRevert("SavingsDai/invalid-address");
+        token.deposit(1e18, address(0));
+        vm.expectRevert("SavingsDai/invalid-address");
+        token.deposit(1e18, address(token));
     }
 
     function testMint() public {
@@ -89,37 +137,59 @@ contract SavingsDaiTest is DSSTest {
 
         uint256 pie = 1e18 * RAY / pot.chi();
         vm.expectEmit(true, true, true, true);
-        emit Transfer(address(0), address(0xBEEF), pie);
-        token.mint(address(0xBEEF), 1e18);
+        emit Deposit(address(this), address(0xBEEF), _divup(pie * pot.chi(), RAY), pie);
+        token.mint(pie, address(0xBEEF));
 
         assertEq(token.totalSupply(), pie);
+        assertLe(token.totalAssets(), 1e18);    // May be slightly less due to rounding error
+        assertGe(token.totalAssets(), 1e18 - 1);
         assertEq(token.balanceOf(address(0xBEEF)), pie);
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
     }
 
     function testMintBadAddress() public {
         vm.expectRevert("SavingsDai/invalid-address");
-        token.mint(address(0), 1e18);
+        token.mint(1e18, address(0));
         vm.expectRevert("SavingsDai/invalid-address");
-        token.mint(address(token), 1e18);
+        token.mint(1e18, address(token));
     }
 
-    function testBurn() public {
+    function testRedeem() public {
         uint256 dsrDai = vat.dai(address(pot));
 
-        token.mint(address(0xBEEF), 1e18);
+        token.deposit(1e18, address(0xBEEF));
         uint256 pie = 1e18 * RAY / pot.chi();
 
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
 
         vm.expectEmit(true, true, true, true);
-        emit Transfer(address(0xBEEF), address(0), pie * 0.9e18 / WAD);
+        emit Withdraw(address(0xBEEF), address(this), address(0xBEEF), (pie * 0.9e18 / WAD) * pot.chi() / RAY, pie * 0.9e18 / WAD);
         vm.prank(address(0xBEEF));
-        token.burn(address(0xBEEF), pie * 0.9e18 / WAD);
+        token.redeem(pie * 0.9e18 / WAD, address(this), address(0xBEEF));
 
         assertEq(token.totalSupply(), pie - pie * 0.9e18 / WAD);
         assertEq(token.balanceOf(address(0xBEEF)), pie - pie * 0.9e18 / WAD);
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi() - (pie * 0.9e18 / WAD) * pot.chi());
+    }
+
+    function testWithdraw() public {
+        uint256 dsrDai = vat.dai(address(pot));
+
+        token.deposit(1e18, address(0xBEEF));
+        uint256 pie = 1e18 * RAY / pot.chi();
+
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
+
+        uint256 assets = (pie * 0.9e18 / WAD) * pot.chi() / RAY;
+        uint256 shares = _divup(assets * RAY, pot.chi());
+        vm.expectEmit(true, true, true, true);
+        emit Withdraw(address(0xBEEF), address(this), address(0xBEEF), assets, shares);
+        vm.prank(address(0xBEEF));
+        token.withdraw(assets, address(this), address(0xBEEF));
+
+        assertEq(token.totalSupply(), pie - shares);
+        assertEq(token.balanceOf(address(0xBEEF)), pie - shares);
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi() - shares * pot.chi());
     }
 
     function testApprove() public {
@@ -155,7 +225,7 @@ contract SavingsDaiTest is DSSTest {
 
     function testTransfer() public {
         uint256 pie = 1e18 * RAY / pot.chi();
-        token.mint(address(this), 1e18);
+        token.deposit(1e18, address(this));
 
         vm.expectEmit(true, true, true, true);
         emit Transfer(address(this), address(0xBEEF), pie);
@@ -168,7 +238,7 @@ contract SavingsDaiTest is DSSTest {
 
     function testTransferBadAddress() public {
         uint256 pie = 1e18 * RAY / pot.chi();
-        token.mint(address(this), 1e18);
+        token.deposit(1e18, address(this));
 
         vm.expectRevert("SavingsDai/invalid-address");
         token.transfer(address(0), pie);
@@ -180,7 +250,7 @@ contract SavingsDaiTest is DSSTest {
         address from = address(0xABCD);
 
         uint256 pie = 1e18 * RAY / pot.chi();
-        token.mint(from, 1e18);
+        token.deposit(1e18, from);
 
         vm.prank(from);
         token.approve(address(this), pie);
@@ -198,7 +268,7 @@ contract SavingsDaiTest is DSSTest {
 
     function testTransferFromBadAddress() public {
         uint256 pie = 1e18 * RAY / pot.chi();
-        token.mint(address(this), 1e18);
+        token.deposit(1e18, address(this));
         
         vm.expectRevert("SavingsDai/invalid-address");
         token.transferFrom(address(this), address(0), pie);
@@ -210,7 +280,7 @@ contract SavingsDaiTest is DSSTest {
         address from = address(0xABCD);
 
         uint256 pie = 1e18 * RAY / pot.chi();
-        token.mint(from, 1e18);
+        token.deposit(1e18, from);
 
         vm.prank(from);
         vm.expectEmit(true, true, true, true);
@@ -327,7 +397,7 @@ contract SavingsDaiTest is DSSTest {
 
     function testTransferInsufficientBalance() public {
         uint256 pie = 0.9e18 * RAY / pot.chi();
-        token.mint(address(this), 0.9e18);
+        token.deposit(0.9e18, address(this));
         vm.expectRevert("SavingsDai/insufficient-balance");
         token.transfer(address(0xBEEF), pie + 1);
     }
@@ -336,10 +406,10 @@ contract SavingsDaiTest is DSSTest {
         address from = address(0xABCD);
 
         uint256 pie = 1e18 * RAY / pot.chi();
-        token.mint(from, 1e18);
+        token.deposit(1e18, from);
 
         vm.prank(from);
-        token.approve(address(this), pie - 1);
+        token.approve(address(0xBEEF), pie - 1);
 
         vm.expectRevert("SavingsDai/insufficient-allowance");
         token.transferFrom(from, address(0xBEEF), pie);
@@ -349,7 +419,7 @@ contract SavingsDaiTest is DSSTest {
         address from = address(0xABCD);
 
         uint256 pie = 0.9e18 * RAY / pot.chi();
-        token.mint(from, 0.9e18);
+        token.deposit(0.9e18, from);
 
         vm.prank(from);
         token.approve(address(this), pie + 1);
@@ -439,16 +509,16 @@ contract SavingsDaiTest is DSSTest {
         token.permit(owner, address(0xCAFE), 1e18, block.timestamp, v, r, s);
     }
 
-    function testMint(address to, uint256 amount) public {
+    function testDeposit(address to, uint256 amount) public {
         amount %= 100 ether;
         uint256 pie = amount * RAY / pot.chi();
         if (to != address(0) && to != address(token)) {
             vm.expectEmit(true, true, true, true);
-            emit Transfer(address(0), to, pie);
+            emit Deposit(address(this), to, amount, pie);
         } else {
             vm.expectRevert("SavingsDai/invalid-address");
         }
-        token.mint(to, amount);
+        token.deposit(amount, to);
 
         if (to != address(0) && to != address(token)) {
             assertEq(token.totalSupply(), pie);
@@ -456,7 +526,7 @@ contract SavingsDaiTest is DSSTest {
         }
     }
 
-    function testBurn(
+    function testRedeem(
         address from,
         uint256 mintAmount,
         uint256 burnAmount
@@ -468,12 +538,12 @@ contract SavingsDaiTest is DSSTest {
         uint256 pie = mintAmount * RAY / pot.chi();
         burnAmount = bound(burnAmount, 0, pie);
 
-        token.mint(from, mintAmount);
+        token.deposit(mintAmount, from);
 
         vm.expectEmit(true, true, true, true);
-        emit Transfer(from, address(0), burnAmount);
+        emit Withdraw(address(from), address(this), address(from), burnAmount * pot.chi() / RAY, burnAmount);
         vm.prank(from);
-        token.burn(from, burnAmount);
+        token.redeem(burnAmount, address(this), from);
 
         assertEq(token.totalSupply(), pie - burnAmount);
         assertEq(token.balanceOf(from), pie - burnAmount);
@@ -492,7 +562,7 @@ contract SavingsDaiTest is DSSTest {
         if (to == address(0) || to == address(token)) return;
 
         uint256 pie = amount * RAY / pot.chi();
-        token.mint(address(this), amount);
+        token.deposit(amount, address(this));
 
         vm.expectEmit(true, true, true, true);
         emit Transfer(address(this), to, pie);
@@ -522,7 +592,7 @@ contract SavingsDaiTest is DSSTest {
         address from = address(0xABCD);
 
         uint256 pie = amount * RAY / pot.chi();
-        token.mint(from, amount);
+        token.deposit(amount, from);
 
         vm.prank(from);
         token.approve(address(this), approval);
@@ -574,7 +644,7 @@ contract SavingsDaiTest is DSSTest {
         assertEq(token.nonces(owner), 1);
     }
 
-    function testBurnInsufficientBalance(
+    function testRedeemInsufficientBalance(
         address to,
         uint256 mintAmount,
         uint256 burnAmount
@@ -586,9 +656,9 @@ contract SavingsDaiTest is DSSTest {
         uint256 pie = mintAmount * RAY / pot.chi();
         burnAmount = bound(burnAmount, pie + 1, type(uint256).max);
 
-        token.mint(to, mintAmount);
+        token.deposit(mintAmount, to);
         vm.expectRevert("SavingsDai/insufficient-balance");
-        token.burn(to, burnAmount);
+        token.redeem(burnAmount, to, to);
     }
 
     function testTransferInsufficientBalance(
@@ -603,7 +673,7 @@ contract SavingsDaiTest is DSSTest {
         uint256 pie = mintAmount * RAY / pot.chi();
         sendAmount = bound(sendAmount, pie + 1, 100 ether);
 
-        token.mint(address(this), mintAmount);
+        token.deposit(mintAmount, address(this));
         vm.expectRevert("SavingsDai/insufficient-balance");
         token.transfer(to, sendAmount);
     }
@@ -623,10 +693,10 @@ contract SavingsDaiTest is DSSTest {
         address from = address(0xABCD);
 
         uint256 pie = amount * RAY / pot.chi();
-        token.mint(from, amount);
+        token.deposit(amount, from);
 
         vm.prank(from);
-        token.approve(address(this), approval);
+        token.approve(to, approval);
 
         vm.expectRevert("SavingsDai/insufficient-allowance");
         token.transferFrom(from, to, pie);
@@ -646,7 +716,7 @@ contract SavingsDaiTest is DSSTest {
 
         address from = address(0xABCD);
 
-        token.mint(from, mintAmount);
+        token.deposit(mintAmount, from);
 
         vm.prank(from);
         token.approve(address(this), sendAmount);
