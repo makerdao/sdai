@@ -513,43 +513,97 @@ contract SavingsDaiTest is DSSTest {
     function testDeposit(address to, uint256 amount, uint256 warp) public {
         amount %= 100 ether;
         vm.warp(block.timestamp + warp % 365 days);
-        uint256 pie = token.previewDeposit(amount);
+        uint256 shares = token.previewDeposit(amount);
         if (to != address(0) && to != address(token)) {
             vm.expectEmit(true, true, true, true);
-            emit Deposit(address(this), to, amount, pie);
+            emit Deposit(address(this), to, amount, shares);
         } else {
             vm.expectRevert("SavingsDai/invalid-address");
         }
-        uint256 shares = token.deposit(amount, to);
+        uint256 ashares = token.deposit(amount, to);
 
         if (to != address(0) && to != address(token)) {
-            assertEq(shares, pie);
-            assertEq(token.totalSupply(), pie);
-            assertEq(token.balanceOf(to), pie);
+            assertEq(ashares, shares);
+            assertEq(token.totalSupply(), shares);
+            assertEq(token.balanceOf(to), shares);
+        }
+    }
+
+    function testMint(address to, uint256 shares, uint256 warp) public {
+        shares %= 100 ether * RAY / pot.chi();
+        vm.warp(block.timestamp + warp % 365 days);
+        uint256 assets = token.previewMint(shares);
+        if (to != address(0) && to != address(token)) {
+            vm.expectEmit(true, true, true, true);
+            emit Deposit(address(this), to, assets, shares);
+        } else {
+            vm.expectRevert("SavingsDai/invalid-address");
+        }
+        uint256 aassets = token.mint(shares, to);
+
+        if (to != address(0) && to != address(token)) {
+            assertEq(aassets, assets);
+            assertEq(token.totalSupply(), shares);
+            assertEq(token.balanceOf(to), shares);
         }
     }
 
     function testRedeem(
         address from,
         uint256 mintAmount,
-        uint256 burnAmount
+        uint256 burnAmount,
+        uint256 warp
     ) public {
         mintAmount %= 100 ether;
         burnAmount %= 100 ether;
+        vm.warp(block.timestamp + warp % 365 days);
         if (from == address(0) || from == address(token)) return;
 
-        uint256 pie = mintAmount * RAY / pot.chi();
+        uint256 pie = token.convertToShares(mintAmount);
         burnAmount = bound(burnAmount, 0, pie);
 
         token.deposit(mintAmount, from);
 
+        uint256 assets = token.previewRedeem(burnAmount);
         vm.expectEmit(true, true, true, true);
-        emit Withdraw(address(from), address(this), address(from), burnAmount * pot.chi() / RAY, burnAmount);
+        emit Withdraw(address(from), TEST_ADDRESS, address(from), assets, burnAmount);
         vm.prank(from);
-        token.redeem(burnAmount, address(this), from);
+        uint256 aassets = token.redeem(burnAmount, TEST_ADDRESS, from);
 
+        assertEq(aassets, assets);
+        if (from != TEST_ADDRESS) assertEq(dai.balanceOf(from), 0);
+        assertEq(dai.balanceOf(TEST_ADDRESS), assets);
         assertEq(token.totalSupply(), pie - burnAmount);
         assertEq(token.balanceOf(from), pie - burnAmount);
+    }
+
+    function testWithdraw(
+        address from,
+        uint256 mintAmount,
+        uint256 burnAmount,
+        uint256 warp
+    ) public {
+        mintAmount = mintAmount % 99 ether + 1 ether;
+        burnAmount %= 100 ether;
+        vm.warp(block.timestamp + warp % 365 days);
+        if (from == address(0) || from == address(token)) return;
+
+        uint256 pie = token.convertToShares(mintAmount);
+        burnAmount = bound(burnAmount, 0, mintAmount);
+
+        token.deposit(mintAmount, from);
+
+        uint256 shares = token.previewWithdraw(burnAmount);
+        vm.expectEmit(true, true, true, true);
+        emit Withdraw(address(from), TEST_ADDRESS, address(from), burnAmount, shares);
+        vm.prank(from);
+        uint256 ashares = token.withdraw(burnAmount, TEST_ADDRESS, from);
+
+        assertEq(ashares, shares);
+        if (from != TEST_ADDRESS) assertEq(dai.balanceOf(from), 0);
+        assertEq(dai.balanceOf(TEST_ADDRESS), burnAmount);
+        assertEq(token.totalSupply(), pie - shares);
+        assertEq(token.balanceOf(from), pie - shares);
     }
 
     function testApprove(address to, uint256 amount) public {
