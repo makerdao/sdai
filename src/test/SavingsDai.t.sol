@@ -387,7 +387,7 @@ contract SavingsDaiTest is DSSTest {
         token.deposit(1e18, from);
 
         vm.prank(from);
-        token.approve(address(this), pie - 1);
+        token.approve(address(0xBEEF), pie - 1);
 
         vm.expectRevert("SavingsDai/insufficient-allowance");
         token.transferFrom(from, address(0xBEEF), pie);
@@ -674,7 +674,7 @@ contract SavingsDaiTest is DSSTest {
         token.deposit(amount, from);
 
         vm.prank(from);
-        token.approve(address(this), approval);
+        token.approve(to, approval);
 
         vm.expectRevert("SavingsDai/insufficient-allowance");
         token.transferFrom(from, to, pie);
