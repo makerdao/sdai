@@ -114,7 +114,7 @@ contract SavingsDai {
         return block.chainid == deploymentChainId ? _DOMAIN_SEPARATOR : _calculateDomainSeparator(block.chainid);
     }
 
-    function _rpow(uint x, uint n, uint base) internal pure returns (uint z) {
+    function _rpow(uint256 x, uint256 n, uint256 base) internal pure returns (uint256 z) {
         assembly {
             switch x case 0 {switch n case 0 {z := base} default {z := 0}}
             default {
