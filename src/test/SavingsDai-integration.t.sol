@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.17;
 
-import "dss-test/DSSTest.sol";
+import "dss-test/DssTest.sol";
 import "dss-interfaces/Interfaces.sol";
 
 import { SavingsDai, IERC1271 } from "../SavingsDai.sol";
@@ -38,7 +38,7 @@ contract MockMultisig is IERC1271 {
     }
 }
 
-contract SavingsDaiTest is DSSTest {
+contract SavingsDaiIntegrationTest is DSSTest {
 
     using GodMode for *;
 
@@ -57,7 +57,7 @@ contract SavingsDaiTest is DSSTest {
     bytes32 constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
-    function postSetup() internal virtual override {
+    function setUp() public override {
         ChainlogAbstract chainlog = ChainlogAbstract(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
         
         vat = VatAbstract(chainlog.getAddress("MCD_VAT"));
@@ -573,8 +573,6 @@ contract SavingsDaiTest is DSSTest {
         assertEq(aassets, assets);
         if (from != TEST_ADDRESS) assertEq(dai.balanceOf(from), 0);
         assertEq(dai.balanceOf(TEST_ADDRESS), assets);
-        assertEq(token.totalSupply(), pie - burnAmount);
-        assertEq(token.balanceOf(from), pie - burnAmount);
     }
 
     function testWithdraw(
@@ -750,6 +748,7 @@ contract SavingsDaiTest is DSSTest {
         address from = address(0xABCD);
 
         uint256 pie = amount * RAY / pot.chi();
+        if (pie == 0) return;
         token.deposit(amount, from);
 
         vm.prank(from);
