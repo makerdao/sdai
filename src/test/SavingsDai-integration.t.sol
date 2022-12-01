@@ -193,6 +193,28 @@ contract SavingsDaiIntegrationTest is DSSTest {
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi() - shares * pot.chi());
     }
 
+    function testSharesEstimatesMatch() public {
+        vm.warp(block.timestamp + 365 days);
+
+        uint256 assets = 1e18;
+        uint256 shares = token.convertToShares(assets);
+
+        pot.drip();
+
+        assertEq(token.convertToShares(assets), shares);
+    }
+
+    function testAssetsEstimatesMatch() public {
+        vm.warp(block.timestamp + 365 days);
+
+        uint256 shares = 1e18;
+        uint256 assets = token.convertToAssets(shares);
+
+        pot.drip();
+
+        assertEq(token.convertToAssets(shares), assets);
+    }
+
     function testApprove() public {
         vm.expectEmit(true, true, true, true);
         emit Approval(address(this), address(0xBEEF), 1e18);
