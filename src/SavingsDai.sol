@@ -290,7 +290,7 @@ contract SavingsDai {
         return convertToShares(assets);
     }
 
-    function deposit(uint256 assets, address receiver) public returns (uint256 shares) {
+    function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
         uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
         shares = assets * RAY / chi;
         _mint(assets, shares, receiver);
@@ -336,7 +336,7 @@ contract SavingsDai {
         return convertToAssets(shares);
     }
 
-    function redeem(uint256 shares, address receiver, address owner) public returns (uint256 assets) {
+    function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets) {
         uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
         assets = shares * chi / RAY;
         _burn(assets, shares, receiver, owner);
