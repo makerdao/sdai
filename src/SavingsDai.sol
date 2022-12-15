@@ -81,6 +81,7 @@ contract SavingsDai {
     uint256 public immutable deploymentChainId;
     bytes32 private immutable _DOMAIN_SEPARATOR;
     bytes32 public constant PERMIT_TYPEHASH = keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+    
     uint256 private constant RAY = 10 ** 27;
 
     constructor(address _daiJoin, address _pot) {
@@ -114,24 +115,24 @@ contract SavingsDai {
         return block.chainid == deploymentChainId ? _DOMAIN_SEPARATOR : _calculateDomainSeparator(block.chainid);
     }
 
-    function _rpow(uint256 x, uint256 n, uint256 base) internal pure returns (uint256 z) {
+    function _rpow(uint256 x, uint256 n) internal pure returns (uint256 z) {
         assembly {
-            switch x case 0 {switch n case 0 {z := base} default {z := 0}}
+            switch x case 0 {switch n case 0 {z := RAY} default {z := 0}}
             default {
-                switch mod(n, 2) case 0 { z := base } default { z := x }
-                let half := div(base, 2)  // for rounding.
+                switch mod(n, 2) case 0 { z := RAY } default { z := x }
+                let half := div(RAY, 2)  // for rounding.
                 for { n := div(n, 2) } n { n := div(n,2) } {
                     let xx := mul(x, x)
                     if iszero(eq(div(xx, x), x)) { revert(0,0) }
                     let xxRound := add(xx, half)
                     if lt(xxRound, xx) { revert(0,0) }
-                    x := div(xxRound, base)
+                    x := div(xxRound, RAY)
                     if mod(n,2) {
                         let zx := mul(z, x)
                         if and(iszero(iszero(x)), iszero(eq(div(zx, x), z))) { revert(0,0) }
                         let zxRound := add(zx, half)
                         if lt(zxRound, zx) { revert(0,0) }
-                        z := div(zxRound, base)
+                        z := div(zxRound, RAY)
                     }
                 }
             }
@@ -226,10 +227,11 @@ contract SavingsDai {
         daiJoin.join(address(this), assets);
         pot.join(shares);
 
+        // note: we don't need an overflow check here b/c shares totalSupply will always be <= dai totalSupply
         unchecked {
-            balanceOf[receiver] = balanceOf[receiver] + shares; // note: we don't need an overflow check here b/c balanceOf[to] <= totalSupply and there is an overflow check below
+            balanceOf[receiver] = balanceOf[receiver] + shares;
+            totalSupply = totalSupply + shares;
         }
-        totalSupply = totalSupply + shares;
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -272,13 +274,13 @@ contract SavingsDai {
 
     function convertToShares(uint256 assets) public view returns (uint256) {
         uint256 rho = pot.rho();
-        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho, RAY) * pot.chi() / RAY : pot.chi();
+        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho) * pot.chi() / RAY : pot.chi();
         return assets * RAY / chi;
     }
 
     function convertToAssets(uint256 shares) public view returns (uint256) {
         uint256 rho = pot.rho();
-        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho, RAY) * pot.chi() / RAY : pot.chi();
+        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho) * pot.chi() / RAY : pot.chi();
         return shares * chi / RAY;
     }
 
@@ -302,7 +304,7 @@ contract SavingsDai {
 
     function previewMint(uint256 shares) external view returns (uint256) {
         uint256 rho = pot.rho();
-        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho, RAY) * pot.chi() / RAY : pot.chi();
+        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho) * pot.chi() / RAY : pot.chi();
         return _divup(shares * chi, RAY);
     }
 
@@ -318,7 +320,7 @@ contract SavingsDai {
 
     function previewWithdraw(uint256 assets) external view returns (uint256) {
         uint256 rho = pot.rho();
-        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho, RAY) * pot.chi() / RAY : pot.chi();
+        uint256 chi = (block.timestamp > rho) ? _rpow(pot.dsr(), block.timestamp - rho) * pot.chi() / RAY : pot.chi();
         return _divup(assets * RAY, chi);
     }
 
