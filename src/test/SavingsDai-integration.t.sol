@@ -53,7 +53,9 @@ contract SavingsDaiIntegrationTest is DSSTest {
     event Approval(address indexed owner, address indexed spender, uint256 amount);
     event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
     event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
-
+    event ReferredDeposit(uint16 indexed referralCode, uint256 assets, uint256 shares);
+    event ReferredWithdraw(uint16 indexed referralCode, uint256 assets, uint256 shares);
+    
     bytes32 constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
@@ -126,6 +128,23 @@ contract SavingsDaiIntegrationTest is DSSTest {
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
     }
 
+    function testReferredDeposit() public {
+        uint256 dsrDai = vat.dai(address(pot));
+
+        uint256 pie = 1e18 * RAY / pot.chi();
+        vm.expectEmit(true, true, true, true);
+        emit Deposit(address(this), address(0xBEEF), 1e18, pie);
+        vm.expectEmit(true, true, true, true);
+        emit ReferredDeposit(888, 1e18, pie);
+        token.deposit(1e18, address(0xBEEF), 888);
+
+        assertEq(token.totalSupply(), pie);
+        assertLe(token.totalAssets(), 1e18);    // May be slightly less due to rounding error
+        assertGe(token.totalAssets(), 1e18 - 1);
+        assertEq(token.balanceOf(address(0xBEEF)), pie);
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
+    }
+
     function testDepositBadAddress() public {
         vm.expectRevert("SavingsDai/invalid-address");
         token.deposit(1e18, address(0));
@@ -140,6 +159,23 @@ contract SavingsDaiIntegrationTest is DSSTest {
         vm.expectEmit(true, true, true, true);
         emit Deposit(address(this), address(0xBEEF), _divup(pie * pot.chi(), RAY), pie);
         token.mint(pie, address(0xBEEF));
+
+        assertEq(token.totalSupply(), pie);
+        assertLe(token.totalAssets(), 1e18);    // May be slightly less due to rounding error
+        assertGe(token.totalAssets(), 1e18 - 1);
+        assertEq(token.balanceOf(address(0xBEEF)), pie);
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
+    }
+
+    function testReferredMint() public {
+        uint256 dsrDai = vat.dai(address(pot));
+
+        uint256 pie = 1e18 * RAY / pot.chi();
+        vm.expectEmit(true, true, true, true);
+        emit Deposit(address(this), address(0xBEEF), _divup(pie * pot.chi(), RAY), pie);
+        vm.expectEmit(true, true, true, true);
+        emit ReferredDeposit(888, 1e18, pie);
+        token.mint(pie, address(0xBEEF), 888);
 
         assertEq(token.totalSupply(), pie);
         assertLe(token.totalAssets(), 1e18);    // May be slightly less due to rounding error
@@ -173,6 +209,26 @@ contract SavingsDaiIntegrationTest is DSSTest {
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi() - (pie * 0.9e18 / WAD) * pot.chi());
     }
 
+    function testReferredRedeem() public {
+        uint256 dsrDai = vat.dai(address(pot));
+
+        token.deposit(1e18, address(0xBEEF));
+        uint256 pie = 1e18 * RAY / pot.chi();
+
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
+
+        vm.expectEmit(true, true, true, true);
+        emit Withdraw(address(0xBEEF), address(this), address(0xBEEF), (pie * 0.9e18 / WAD) * pot.chi() / RAY, pie * 0.9e18 / WAD);
+        vm.expectEmit(true, true, true, true);
+        emit ReferredWithdraw(888, (pie * 0.9e18 / WAD) * pot.chi() / RAY, pie * 0.9e18 / WAD);
+        vm.prank(address(0xBEEF));
+        token.redeem(pie * 0.9e18 / WAD, address(this), address(0xBEEF), 888);
+
+        assertEq(token.totalSupply(), pie - pie * 0.9e18 / WAD);
+        assertEq(token.balanceOf(address(0xBEEF)), pie - pie * 0.9e18 / WAD);
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi() - (pie * 0.9e18 / WAD) * pot.chi());
+    }
+
     function testWithdraw() public {
         uint256 dsrDai = vat.dai(address(pot));
 
@@ -187,6 +243,28 @@ contract SavingsDaiIntegrationTest is DSSTest {
         emit Withdraw(address(0xBEEF), address(this), address(0xBEEF), assets, shares);
         vm.prank(address(0xBEEF));
         token.withdraw(assets, address(this), address(0xBEEF));
+
+        assertEq(token.totalSupply(), pie - shares);
+        assertEq(token.balanceOf(address(0xBEEF)), pie - shares);
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi() - shares * pot.chi());
+    }
+
+    function testReferredWithdraw() public {
+        uint256 dsrDai = vat.dai(address(pot));
+
+        token.deposit(1e18, address(0xBEEF));
+        uint256 pie = 1e18 * RAY / pot.chi();
+
+        assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
+
+        uint256 assets = (pie * 0.9e18 / WAD) * pot.chi() / RAY;
+        uint256 shares = _divup(assets * RAY, pot.chi());
+        vm.expectEmit(true, true, true, true);
+        emit Withdraw(address(0xBEEF), address(this), address(0xBEEF), assets, shares);
+        vm.expectEmit(true, true, true, true);
+        emit ReferredWithdraw(888, assets, shares);
+        vm.prank(address(0xBEEF));
+        token.withdraw(assets, address(this), address(0xBEEF), 888);
 
         assertEq(token.totalSupply(), pie - shares);
         assertEq(token.balanceOf(address(0xBEEF)), pie - shares);
