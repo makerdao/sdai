@@ -76,8 +76,7 @@ contract SavingsDai {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
     event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
-    event ReferredDeposit(uint16 indexed referralCode, uint256 assets, uint256 shares);
-    event ReferredWithdraw(uint16 indexed referralCode, uint256 assets, uint256 shares);
+    event ReferredDeposit(uint16 indexed referralCode, address indexed owner, uint256 assets, uint256 shares);
 
     // --- EIP712 niceties ---
     uint256 public immutable deploymentChainId;
@@ -237,11 +236,11 @@ contract SavingsDai {
 
         emit Deposit(msg.sender, receiver, assets, shares);
         if(referralCode > 0) {
-            emit ReferredDeposit(referralCode, assets, shares);
+            emit ReferredDeposit(referralCode, receiver, assets, shares);
         }
     }
 
-    function _burn(uint256 assets, uint256 shares, address receiver, address owner, uint16 referralCode) internal {
+    function _burn(uint256 assets, uint256 shares, address receiver, address owner) internal {
         uint256 balance = balanceOf[owner];
         require(balance >= shares, "SavingsDai/insufficient-balance");
 
@@ -265,9 +264,6 @@ contract SavingsDai {
         daiJoin.exit(receiver, assets);
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-        if(referralCode > 0) {
-            emit ReferredWithdraw(referralCode, assets, shares);
-        }
     }
 
     // --- ERC-4626 ---
@@ -341,13 +337,9 @@ contract SavingsDai {
     }
 
     function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
-        shares = withdraw(assets, receiver, owner, 0);
-    }
-
-    function withdraw(uint256 assets, address receiver, address owner, uint16 referralCode) public returns (uint256 shares) {
         uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
         shares = _divup(assets * RAY, chi);
-        _burn(assets, shares, receiver, owner, referralCode);
+        _burn(assets, shares, receiver, owner);
     }
 
     function maxRedeem(address owner) external view returns (uint256) {
@@ -359,13 +351,9 @@ contract SavingsDai {
     }
 
     function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets) {
-        assets = redeem(shares, receiver, owner, 0);
-    }
-    
-    function redeem(uint256 shares, address receiver, address owner, uint16 referralCode) public returns (uint256 assets) {
         uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
         assets = shares * chi / RAY;
-        _burn(assets, shares, receiver, owner, referralCode);
+        _burn(assets, shares, receiver, owner);
     }
 
     // --- Approve by signature ---
