@@ -53,7 +53,7 @@ contract SavingsDaiIntegrationTest is DSSTest {
     event Approval(address indexed owner, address indexed spender, uint256 amount);
     event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
     event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
-    event ReferredDeposit(uint16 indexed referralCode, uint256 assets, uint256 shares);
+    event ReferredDeposit(uint16 indexed referralCode, address indexed owner, uint256 assets, uint256 shares);
 
     bytes32 constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
@@ -134,7 +134,7 @@ contract SavingsDaiIntegrationTest is DSSTest {
         vm.expectEmit(true, true, true, true);
         emit Deposit(address(this), address(0xBEEF), 1e18, pie);
         vm.expectEmit(true, true, true, true);
-        emit ReferredDeposit(888, 1e18, pie);
+        emit ReferredDeposit(888, address(0xBEEF), 1e18, pie);
         token.deposit(1e18, address(0xBEEF), 888);
 
         assertEq(token.totalSupply(), pie);
@@ -173,7 +173,7 @@ contract SavingsDaiIntegrationTest is DSSTest {
         vm.expectEmit(true, true, true, true);
         emit Deposit(address(this), address(0xBEEF), _divup(pie * pot.chi(), RAY), pie);
         vm.expectEmit(true, true, true, true);
-        emit ReferredDeposit(888, 1e18, pie);
+        emit ReferredDeposit(888, address(0xBEEF), 1e18, pie);
         token.mint(pie, address(0xBEEF), 888);
 
         assertEq(token.totalSupply(), pie);
