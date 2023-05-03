@@ -38,7 +38,7 @@ contract MockMultisig is IERC1271 {
     }
 }
 
-contract SavingsDaiIntegrationTest is DSSTest {
+contract SavingsDaiIntegrationTest is DssTest {
 
     using GodMode for *;
 
@@ -58,7 +58,7 @@ contract SavingsDaiIntegrationTest is DSSTest {
     bytes32 constant PERMIT_TYPEHASH =
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
-    function setUp() public override {
+    function setUp() public {
         ChainlogAbstract chainlog = ChainlogAbstract(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
         
         vat = VatAbstract(chainlog.getAddress("MCD_VAT"));
