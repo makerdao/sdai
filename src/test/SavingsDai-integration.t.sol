@@ -766,7 +766,7 @@ contract SavingsDaiIntegrationTest is DssTest {
         if (to == address(0) || to == address(token)) return;
 
         uint256 pie = mintAmount * RAY / pot.chi();
-        burnAmount = bound(burnAmount, pie + 1, type(uint256).max);
+        burnAmount = bound(burnAmount, pie + 1, type(uint256).max / pot.chi());
 
         token.deposit(mintAmount, to);
         vm.expectRevert("SavingsDai/insufficient-balance");
