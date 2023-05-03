@@ -76,7 +76,7 @@ contract SavingsDai {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
     event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
-    event ReferredDeposit(uint16 indexed referralCode, address indexed owner, uint256 assets, uint256 shares);
+    event Referral(uint16 indexed referral, address indexed owner, uint256 assets, uint256 shares);
 
     // --- EIP712 niceties ---
     uint256 public immutable deploymentChainId;
@@ -221,7 +221,7 @@ contract SavingsDai {
 
     // --- Mint/Burn Internal ---
 
-    function _mint(uint256 assets, uint256 shares, address receiver, uint16 referralCode) internal {
+    function _mint(uint256 assets, uint256 shares, address receiver, uint16 referral) internal {
         require(receiver != address(0) && receiver != address(this), "SavingsDai/invalid-address");
 
         dai.transferFrom(msg.sender, address(this), assets);
@@ -235,9 +235,19 @@ contract SavingsDai {
         }
 
         emit Deposit(msg.sender, receiver, assets, shares);
-        if(referralCode > 0) {
-            emit ReferredDeposit(referralCode, receiver, assets, shares);
-        }
+        if (referral > 0) emit Referral(referral, receiver, assets, shares);
+    }
+
+    function _mint(uint256 shares, address receiver, uint16 referral) internal returns (uint256 assets) {
+        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
+        assets = _divup(shares * chi, RAY);
+        _mint(assets, shares, receiver, referral);
+    }
+
+    function _deposit(uint256 assets, address receiver, uint16 referral) internal returns (uint256 shares) {
+        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
+        shares = assets * RAY / chi;
+        _mint(assets, shares, receiver, referral);
     }
 
     function _burn(uint256 assets, uint256 shares, address receiver, address owner) internal {
@@ -297,13 +307,11 @@ contract SavingsDai {
     }
 
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
-        shares = deposit(assets, receiver, 0);
+        shares = _deposit(assets, receiver, 0);
     }
 
-    function deposit(uint256 assets, address receiver, uint16 referralCode) public returns (uint256 shares) {
-        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
-        shares = assets * RAY / chi;
-        _mint(assets, shares, receiver, referralCode);
+    function deposit(uint256 assets, address receiver, uint16 referral) external returns (uint256 shares) {
+        shares = _deposit(assets, receiver, referral);
     }
 
     function maxMint(address) external pure returns (uint256) {
@@ -317,13 +325,11 @@ contract SavingsDai {
     }
 
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
-        assets = mint(shares, receiver, 0);
+        assets = _mint(shares, receiver, 0);
     }
 
-    function mint(uint256 shares, address receiver, uint16 referralCode) public returns (uint256 assets) {
-        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
-        assets = _divup(shares * chi, RAY);
-        _mint(assets, shares, receiver, referralCode);
+    function mint(uint256 shares, address receiver, uint16 referral) external returns (uint256 assets) {
+        assets = _mint(shares, receiver, referral);
     }
 
     function maxWithdraw(address owner) external view returns (uint256) {
