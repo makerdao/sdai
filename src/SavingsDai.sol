@@ -221,7 +221,19 @@ contract SavingsDai {
 
     // --- Mint/Burn Internal ---
 
-    function _mint(uint256 assets, uint256 shares, address receiver, uint16 referral) internal {
+    function _mint(uint256 shares, address receiver, uint16 referral) internal returns (uint256 assets) {
+        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
+        assets = _divup(shares * chi, RAY);
+        _doMint(assets, shares, receiver, referral);
+    }
+
+    function _deposit(uint256 assets, address receiver, uint16 referral) internal returns (uint256 shares) {
+        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
+        shares = assets * RAY / chi;
+        _doMint(assets, shares, receiver, referral);
+    }
+
+    function _doMint(uint256 assets, uint256 shares, address receiver, uint16 referral) internal {
         require(receiver != address(0) && receiver != address(this), "SavingsDai/invalid-address");
 
         dai.transferFrom(msg.sender, address(this), assets);
@@ -238,19 +250,7 @@ contract SavingsDai {
         if (referral > 0) emit Referral(referral, receiver, assets, shares);
     }
 
-    function _mint(uint256 shares, address receiver, uint16 referral) internal returns (uint256 assets) {
-        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
-        assets = _divup(shares * chi, RAY);
-        _mint(assets, shares, receiver, referral);
-    }
-
-    function _deposit(uint256 assets, address receiver, uint16 referral) internal returns (uint256 shares) {
-        uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
-        shares = assets * RAY / chi;
-        _mint(assets, shares, receiver, referral);
-    }
-
-    function _burn(uint256 assets, uint256 shares, address receiver, address owner) internal {
+    function _doBurn(uint256 assets, uint256 shares, address receiver, address owner) internal {
         uint256 balance = balanceOf[owner];
         require(balance >= shares, "SavingsDai/insufficient-balance");
 
@@ -345,7 +345,7 @@ contract SavingsDai {
     function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares) {
         uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
         shares = _divup(assets * RAY, chi);
-        _burn(assets, shares, receiver, owner);
+        _doBurn(assets, shares, receiver, owner);
     }
 
     function maxRedeem(address owner) external view returns (uint256) {
@@ -359,7 +359,7 @@ contract SavingsDai {
     function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets) {
         uint256 chi = (block.timestamp > pot.rho()) ? pot.drip() : pot.chi();
         assets = shares * chi / RAY;
-        _burn(assets, shares, receiver, owner);
+        _doBurn(assets, shares, receiver, owner);
     }
 
     // --- Approve by signature ---
@@ -391,13 +391,13 @@ contract SavingsDai {
             abi.decode(result, (bytes4)) == IERC1271.isValidSignature.selector);
     }
 
-    function permit(
+    function _permit(
         address owner,
         address spender,
         uint256 value,
         uint256 deadline,
         bytes memory signature
-    ) public {
+    ) internal {
         require(block.timestamp <= deadline, "SavingsDai/permit-expired");
         require(owner != address(0), "SavingsDai/invalid-owner");
 
@@ -429,11 +429,21 @@ contract SavingsDai {
         address spender,
         uint256 value,
         uint256 deadline,
+        bytes memory signature
+    ) external {
+        _permit(owner, spender, value, deadline, signature);
+    }
+
+    function permit(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
         uint8 v,
         bytes32 r,
         bytes32 s
     ) external {
-        permit(owner, spender, value, deadline, abi.encodePacked(r, s, v));
+        _permit(owner, spender, value, deadline, abi.encodePacked(r, s, v));
     }
 
 }
