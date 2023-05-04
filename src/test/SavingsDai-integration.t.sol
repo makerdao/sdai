@@ -127,7 +127,7 @@ contract SavingsDaiIntegrationTest is DssTest {
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
     }
 
-    function testReferral() public {
+    function testReferredDeposit() public {
         uint256 dsrDai = vat.dai(address(pot));
 
         uint256 pie = 1e18 * RAY / pot.chi();
