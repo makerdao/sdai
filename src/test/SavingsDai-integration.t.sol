@@ -616,6 +616,9 @@ contract SavingsDaiIntegrationTest is DssTest {
         vm.warp(block.timestamp + warp % 365 days);
         if (from == address(0) || from == address(token)) return;
 
+        uint256 initialFromBalance = dai.balanceOf(from);
+        uint256 initialTestBalance = dai.balanceOf(TEST_ADDRESS);
+
         uint256 pie = token.convertToShares(mintAmount);
         burnAmount = bound(burnAmount, 0, pie);
 
@@ -628,8 +631,8 @@ contract SavingsDaiIntegrationTest is DssTest {
         uint256 aassets = token.redeem(burnAmount, TEST_ADDRESS, from);
 
         assertEq(aassets, assets);
-        if (from != TEST_ADDRESS) assertEq(dai.balanceOf(from), 0);
-        assertEq(dai.balanceOf(TEST_ADDRESS), assets);
+        if (from != TEST_ADDRESS) assertEq(dai.balanceOf(from), initialFromBalance);
+        assertEq(dai.balanceOf(TEST_ADDRESS), initialTestBalance + assets);
     }
 
     function testWithdraw(
@@ -643,6 +646,9 @@ contract SavingsDaiIntegrationTest is DssTest {
         vm.warp(block.timestamp + warp % 365 days);
         if (from == address(0) || from == address(token)) return;
 
+        uint256 initialFromBalance = dai.balanceOf(from);
+        uint256 initialTestBalance = dai.balanceOf(TEST_ADDRESS);
+
         uint256 pie = token.convertToShares(mintAmount);
         burnAmount = bound(burnAmount, 0, mintAmount);
 
@@ -655,8 +661,8 @@ contract SavingsDaiIntegrationTest is DssTest {
         uint256 ashares = token.withdraw(burnAmount, TEST_ADDRESS, from);
 
         assertEq(ashares, shares);
-        if (from != TEST_ADDRESS) assertEq(dai.balanceOf(from), 0);
-        assertEq(dai.balanceOf(TEST_ADDRESS), burnAmount);
+        if (from != TEST_ADDRESS) assertEq(dai.balanceOf(from), initialFromBalance);
+        assertEq(dai.balanceOf(TEST_ADDRESS), initialTestBalance + burnAmount);
         assertEq(token.totalSupply(), pie - shares);
         assertEq(token.balanceOf(from), pie - shares);
     }
