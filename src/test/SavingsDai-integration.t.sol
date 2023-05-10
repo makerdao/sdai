@@ -527,7 +527,7 @@ contract SavingsDaiIntegrationTest is DssTest {
     function testPermitPastDeadline() public {
         uint256 privateKey = 0xBEEF;
         address owner = vm.addr(privateKey);
-        uint256 deadline = block.timestamp == 0 ? 0 : block.timestamp - 1;
+        uint256 deadline = block.timestamp;
 
         bytes32 domain_separator = token.DOMAIN_SEPARATOR();
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(
@@ -545,6 +545,11 @@ contract SavingsDaiIntegrationTest is DssTest {
 
         vm.expectRevert("SavingsDai/permit-expired");
         token.permit(owner, address(0xCAFE), 1e18, deadline, v, r, s);
+    }
+
+    function testPermitOwnerZero() public {
+        vm.expectRevert("SavingsDai/invalid-owner");
+        token.permit(address(0), address(0xCAFE), 1e18, block.timestamp, 28, bytes32(0), bytes32(0));
     }
 
     function testPermitReplay() public {
@@ -906,7 +911,6 @@ contract SavingsDaiIntegrationTest is DssTest {
         uint256 deadline
     ) public {
         if (deadline == type(uint256).max) deadline -= 1;
-        vm.warp(deadline);
 
         // private key cannot be 0 for secp256k1 pubkey generation
         if (privateKey == 0) privateKey = 1;
