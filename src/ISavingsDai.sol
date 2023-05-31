@@ -45,9 +45,11 @@ interface ISavingsDai {
     function maxDeposit(address) external view returns (uint256);
     function previewDeposit(uint256) external view returns (uint256);
     function deposit(uint256, address) external returns (uint256);
+    function deposit(uint256, address, uint16) external returns (uint256);
     function maxMint(address) external view returns (uint256);
     function previewMint(uint256) external view returns (uint256);
     function mint(uint256, address) external returns (uint256);
+    function mint(uint256, address, uint16) external returns (uint256);
     function maxWithdraw(address) external view returns (uint256);
     function previewWithdraw(uint256) external view returns (uint256);
     function withdraw(uint256, address, address) external returns (uint256);
