@@ -1,6 +1,11 @@
 # Savings DAI
 
-A tokenized wrapper around the DSR. Supports ERC4626. Share to asset conversions are real-time even if the pot hasn't been dripped in a while. Please note this is sample code only and there is no official deploys. Feel free to deploy it yourself.
+A tokenized wrapper around the DSR. Supports ERC4626. Share to asset conversions are real-time even if the pot hasn't been dripped in a while.
+
+## Deployments
+
+- [Mainnet](https://etherscan.io/address/0x83f20f44975d03b1b09e64809b757c47f942beea)
+- [Goerli](https://goerli.etherscan.io/address/0xd8134205b0328f5676aaefb3b2a0dc15f4029d8c)
 
 ## Referral Code
 
