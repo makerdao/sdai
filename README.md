@@ -4,6 +4,8 @@ A tokenized wrapper around the DSR. Supports ERC4626. Share to asset conversions
 
 ## Deployments
 
+Commit `665879762f8b5df5d234463f45d1d6a49bd4fbeb` (no referral):
+
 - [Mainnet](https://etherscan.io/address/0x83f20f44975d03b1b09e64809b757c47f942beea)
 - [Goerli](https://goerli.etherscan.io/address/0xd8134205b0328f5676aaefb3b2a0dc15f4029d8c)
 
