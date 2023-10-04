@@ -74,6 +74,8 @@ contract SavingsDaiIntegrationTest is DssTest {
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
     function setUp() public {
+        vm.createSelectFork(getChain('mainnet'));
+        
         ChainlogAbstract chainlog = ChainlogAbstract(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
         
         vat = VatAbstract(chainlog.getAddress("MCD_VAT"));
@@ -131,8 +133,10 @@ contract SavingsDaiIntegrationTest is DssTest {
         uint256 dsrDai = vat.dai(address(pot));
 
         uint256 pie = 1e18 * RAY / pot.chi();
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Deposit(address(this), address(0xBEEF), 1e18, pie);
+        vm.expectEmit();
+        emit Transfer(address(0), address(0xBEEF), pie);
         token.deposit(1e18, address(0xBEEF));
 
         assertEq(token.totalSupply(), pie);

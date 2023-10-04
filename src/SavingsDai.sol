@@ -235,6 +235,7 @@ contract SavingsDai {
         }
 
         emit Deposit(msg.sender, receiver, assets, shares);
+        emit Transfer(address(0), receiver, shares);
     }
 
     function _burn(uint256 assets, uint256 shares, address receiver, address owner) internal {
@@ -260,6 +261,7 @@ contract SavingsDai {
         pot.exit(shares);
         daiJoin.exit(receiver, assets);
 
+        emit Transfer(owner, address(0), shares);
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
