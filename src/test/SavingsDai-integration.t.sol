@@ -74,8 +74,8 @@ contract SavingsDaiIntegrationTest is DssTest {
         keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
     function setUp() public {
-        vm.createSelectFork(getChain('mainnet'));
-        
+        vm.createSelectFork(getChain('mainnet').rpcUrl);
+
         ChainlogAbstract chainlog = ChainlogAbstract(0xdA0Ab1e0017DEbCd72Be8599041a2aa3bA7e740F);
         
         vat = VatAbstract(chainlog.getAddress("MCD_VAT"));
@@ -150,9 +150,11 @@ contract SavingsDaiIntegrationTest is DssTest {
         uint256 dsrDai = vat.dai(address(pot));
 
         uint256 pie = 1e18 * RAY / pot.chi();
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Deposit(address(this), address(0xBEEF), 1e18, pie);
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
+        emit Transfer(address(0), address(0xBEEF), pie);
+        vm.expectEmit();
         emit Referral(888, address(0xBEEF), 1e18, pie);
         token.deposit(1e18, address(0xBEEF), 888);
 
@@ -174,8 +176,10 @@ contract SavingsDaiIntegrationTest is DssTest {
         uint256 dsrDai = vat.dai(address(pot));
 
         uint256 pie = 1e18 * RAY / pot.chi();
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Deposit(address(this), address(0xBEEF), _divup(pie * pot.chi(), RAY), pie);
+        vm.expectEmit();
+        emit Transfer(address(0), address(0xBEEF), pie);
         token.mint(pie, address(0xBEEF));
 
         assertEq(token.totalSupply(), pie);
@@ -189,9 +193,11 @@ contract SavingsDaiIntegrationTest is DssTest {
         uint256 dsrDai = vat.dai(address(pot));
 
         uint256 pie = 1e18 * RAY / pot.chi();
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Deposit(address(this), address(0xBEEF), _divup(pie * pot.chi(), RAY), pie);
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
+        emit Transfer(address(0), address(0xBEEF), pie);
+        vm.expectEmit();
         emit Referral(888, address(0xBEEF), 1e18, pie);
         token.mint(pie, address(0xBEEF), 888);
 
@@ -217,7 +223,9 @@ contract SavingsDaiIntegrationTest is DssTest {
 
         assertEq(vat.dai(address(pot)), dsrDai + pie * pot.chi());
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
+        emit Transfer(address(0xBEEF), address(0), pie * 0.9e18 / WAD);
+        vm.expectEmit();
         emit Withdraw(address(0xBEEF), address(this), address(0xBEEF), (pie * 0.9e18 / WAD) * pot.chi() / RAY, pie * 0.9e18 / WAD);
         vm.prank(address(0xBEEF));
         token.redeem(pie * 0.9e18 / WAD, address(this), address(0xBEEF));
@@ -237,7 +245,9 @@ contract SavingsDaiIntegrationTest is DssTest {
 
         uint256 assets = (pie * 0.9e18 / WAD) * pot.chi() / RAY;
         uint256 shares = _divup(assets * RAY, pot.chi());
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
+        emit Transfer(address(0xBEEF), address(0), shares);
+        vm.expectEmit();
         emit Withdraw(address(0xBEEF), address(this), address(0xBEEF), assets, shares);
         vm.prank(address(0xBEEF));
         token.withdraw(assets, address(this), address(0xBEEF));
@@ -270,7 +280,7 @@ contract SavingsDaiIntegrationTest is DssTest {
     }
 
     function testApprove() public {
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Approval(address(this), address(0xBEEF), 1e18);
         assertTrue(token.approve(address(0xBEEF), 1e18));
 
@@ -278,7 +288,7 @@ contract SavingsDaiIntegrationTest is DssTest {
     }
 
     function testIncreaseAllowance() public {
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Approval(address(this), address(0xBEEF), 1e18);
         assertTrue(token.increaseAllowance(address(0xBEEF), 1e18));
 
@@ -287,7 +297,7 @@ contract SavingsDaiIntegrationTest is DssTest {
 
     function testDecreaseAllowance() public {
         assertTrue(token.increaseAllowance(address(0xBEEF), 3e18));
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Approval(address(this), address(0xBEEF), 2e18);
         assertTrue(token.decreaseAllowance(address(0xBEEF), 1e18));
 
@@ -304,7 +314,7 @@ contract SavingsDaiIntegrationTest is DssTest {
         uint256 pie = 1e18 * RAY / pot.chi();
         token.deposit(1e18, address(this));
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Transfer(address(this), address(0xBEEF), pie);
         assertTrue(token.transfer(address(0xBEEF), pie));
         assertEq(token.totalSupply(), pie);
@@ -332,7 +342,7 @@ contract SavingsDaiIntegrationTest is DssTest {
         vm.prank(from);
         token.approve(address(this), pie);
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Transfer(from, address(0xBEEF), pie);
         assertTrue(token.transferFrom(from, address(0xBEEF), pie));
         assertEq(token.totalSupply(), pie);
@@ -360,11 +370,11 @@ contract SavingsDaiIntegrationTest is DssTest {
         token.deposit(1e18, from);
 
         vm.prank(from);
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Approval(from, address(this), type(uint256).max);
         token.approve(address(this), type(uint256).max);
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Transfer(from, address(0xBEEF), pie);
         assertTrue(token.transferFrom(from, address(0xBEEF), pie));
         assertEq(token.totalSupply(), pie);
@@ -390,7 +400,7 @@ contract SavingsDaiIntegrationTest is DssTest {
             )
         );
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Approval(owner, address(0xCAFE), 1e18);
         token.permit(owner, address(0xCAFE), 1e18, block.timestamp, v, r, s);
 
@@ -429,7 +439,7 @@ contract SavingsDaiIntegrationTest is DssTest {
         );
 
         bytes memory signature = abi.encode(r, s, bytes32(uint256(v) << 248), r2, s2, bytes32(uint256(v2) << 248));
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Approval(mockMultisig, address(0xCAFE), 1e18);
         token.permit(mockMultisig, address(0xCAFE), 1e18, block.timestamp, signature);
 
@@ -596,8 +606,10 @@ contract SavingsDaiIntegrationTest is DssTest {
         vm.warp(block.timestamp + warp % 365 days);
         uint256 shares = token.previewDeposit(amount);
         if (to != address(0) && to != address(token)) {
-            vm.expectEmit(true, true, true, true);
+            vm.expectEmit();
             emit Deposit(address(this), to, amount, shares);
+            vm.expectEmit();
+            emit Transfer(address(0), to, shares);
         } else {
             vm.expectRevert("SavingsDai/invalid-address");
         }
@@ -615,8 +627,10 @@ contract SavingsDaiIntegrationTest is DssTest {
         vm.warp(block.timestamp + warp % 365 days);
         uint256 assets = token.previewMint(shares);
         if (to != address(0) && to != address(token)) {
-            vm.expectEmit(true, true, true, true);
+            vm.expectEmit();
             emit Deposit(address(this), to, assets, shares);
+            vm.expectEmit();
+            emit Transfer(address(0), to, shares);
         } else {
             vm.expectRevert("SavingsDai/invalid-address");
         }
@@ -649,7 +663,9 @@ contract SavingsDaiIntegrationTest is DssTest {
         token.deposit(mintAmount, from);
 
         uint256 assets = token.previewRedeem(burnAmount);
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
+        emit Transfer(address(from), address(0), burnAmount);
+        vm.expectEmit();
         emit Withdraw(address(from), TEST_ADDRESS, address(from), assets, burnAmount);
         vm.prank(from);
         uint256 aassets = token.redeem(burnAmount, TEST_ADDRESS, from);
@@ -679,7 +695,9 @@ contract SavingsDaiIntegrationTest is DssTest {
         token.deposit(mintAmount, from);
 
         uint256 shares = token.previewWithdraw(burnAmount);
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
+        emit Transfer(address(from), address(0), shares);
+        vm.expectEmit();
         emit Withdraw(address(from), TEST_ADDRESS, address(from), burnAmount, shares);
         vm.prank(from);
         uint256 ashares = token.withdraw(burnAmount, TEST_ADDRESS, from);
@@ -692,7 +710,7 @@ contract SavingsDaiIntegrationTest is DssTest {
     }
 
     function testApprove(address to, uint256 amount) public {
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Approval(address(this), to, amount);
         assertTrue(token.approve(to, amount));
 
@@ -706,7 +724,7 @@ contract SavingsDaiIntegrationTest is DssTest {
         uint256 pie = amount * RAY / pot.chi();
         token.deposit(amount, address(this));
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Transfer(address(this), to, pie);
         assertTrue(token.transfer(to, pie));
         assertEq(token.totalSupply(), pie);
@@ -739,7 +757,7 @@ contract SavingsDaiIntegrationTest is DssTest {
         vm.prank(from);
         token.approve(address(this), approval);
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Transfer(from, to, pie);
         assertTrue(token.transferFrom(from, to, pie));
         assertEq(token.totalSupply(), pie);
@@ -778,7 +796,7 @@ contract SavingsDaiIntegrationTest is DssTest {
             )
         );
 
-        vm.expectEmit(true, true, true, true);
+        vm.expectEmit();
         emit Approval(owner, to, amount);
         token.permit(owner, to, amount, deadline, v, r, s);
 
