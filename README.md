@@ -22,3 +22,8 @@ The implementation assumes Maker emergency shutdown can not be triggered. Any sy
 
 The original code was created by hexonaut (SavingsDai) and the MakerDAO devs (Pot).
 Since it should belong to the MakerDAO community the Copyright for the code has been transferred to Dai Foundation
+
+## Sherlock Contest:
+
+You can find general (and particular for this repository) scope, definitions, rules, disclaimers and known issues that apply to the Sherlock contest [here](https://github.com/makerdao/sherlock-contest/blob/master/README.md).
+Content listed there should be regarded as if it was in this readme.
