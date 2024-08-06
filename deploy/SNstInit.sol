@@ -27,6 +27,7 @@ interface SNstLike {
     function nst() external view returns (address);
     function vow() external view returns (address);
     function file(bytes32, uint256) external;
+    function drip() external returns (uint256);
 }
 
 interface NstJoinLike {
@@ -61,6 +62,7 @@ library SNstInit {
 
         dss.vat.rely(instance.sNst);
 
+        SNstLike(instance.sNst).drip();
         SNstLike(instance.sNst).file("nsr", cfg.nsr);
 
         dss.chainlog.setAddress("SNST",      instance.sNst);
