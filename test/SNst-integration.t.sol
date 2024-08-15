@@ -105,6 +105,7 @@ contract SNstIntegrationTest is TokenFuzzChecks {
             nst: address(nst),
             nsr: 1000000001547125957863212448
         });
+        vm.warp(block.timestamp + 10);
         vm.startPrank(pauseProxy);
         SNstInit.init(dss, inst, conf);
         vm.stopPrank();
