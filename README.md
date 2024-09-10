@@ -22,3 +22,7 @@ The implementation assumes Maker emergency shutdown can not be triggered. Any sy
 
 The original code was created by hexonaut (SavingsDai) and the MakerDAO devs (Pot).
 Since it should belong to the MakerDAO community the Copyright for the code has been transferred to Dai Foundation
+
+## L2 deployment
+
+For L2s the token implementation is of a standard upgradeable token and does not have staking logic. It is based on the USDS code.
